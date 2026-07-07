@@ -146,6 +146,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
 
     <!-- Reusing the dashboard admin template styles -->
     <style>
@@ -399,6 +401,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-color: var(--primary);
             box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
         }
+
+        /* Style Select2 to match custom-form-control */
+        .select2-container--bootstrap-5 .select2-selection {
+            border-radius: 10px !important;
+            border: 1px solid #cbd5e1 !important;
+            min-height: 43px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+        .select2-container--bootstrap-5.select2-container--focus .select2-selection {
+            border-color: var(--primary) !important;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1) !important;
+        }
+        .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            padding-left: 15px !important;
+            padding-right: 15px !important;
+            color: var(--text) !important;
+        }
+        .select2-container--bootstrap-5 .select2-dropdown {
+            border-radius: 10px !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+            z-index: 1050 !important;
+        }
+        .select2-container--bootstrap-5 .select2-dropdown .select2-search .select2-search__field {
+            border-radius: 8px !important;
+            border: 1px solid #cbd5e1 !important;
+        }
+        .select2-container--bootstrap-5 .select2-dropdown .select2-results__options .select2-results__option {
+            padding: 8px 15px !important;
+        }
     </style>
 </head>
 
@@ -631,61 +664,93 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
-        document.getElementById('class_select').addEventListener('change', function () {
-            const classValue = this.value;
-            const studentSelect = document.getElementById('student_select');
-            const resultsContainer = document.getElementById('results_container');
+        $(document).ready(function () {
+            // Initialize Select2 on student select dropdown
+            $('#student_select').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'First Select Degree Programme',
+                width: '100%'
+            });
 
-            if (classValue) {
-                // Load students for selected class
-                fetch('get_students_by_degree_programme.php?degree_programme=' + classValue)
-                    .then(response => response.json())
-                    .then(data => {
-                        studentSelect.innerHTML = '<option value="">Select Student...</option>';
-                        data.forEach(student => {
-                            studentSelect.innerHTML += `
-                            <option value="${student.id}">
-                                ${student.name} (Roll No: ${student.roll_number})
-                            </option>`;
+            // Handle changes in degree programme selection
+            $('#class_select').on('change', function () {
+                const classValue = this.value;
+                const $studentSelect = $('#student_select');
+                const resultsContainer = document.getElementById('results_container');
+
+                if (classValue) {
+                    // Load students for selected class
+                    fetch('get_students_by_degree_programme.php?degree_programme=' + encodeURIComponent(classValue))
+                        .then(response => response.json())
+                        .then(data => {
+                            $studentSelect.empty().append('<option value="">Select Student...</option>');
+                            data.forEach(student => {
+                                // Formatting students: Student Name (Reg No: register_number)
+                                $studentSelect.append(`
+                                    <option value="${student.id}">
+                                        ${student.name} (Reg No: ${student.register_number})
+                                    </option>
+                                `);
+                            });
+                            $studentSelect.prop('disabled', false);
+                            
+                            // Re-initialize select2 with the new placeholder
+                            $studentSelect.select2({
+                                theme: 'bootstrap-5',
+                                placeholder: 'Select Student...',
+                                width: '100%'
+                            });
+                            
+                            // Clear previous selection and trigger change to clear unpublished results table
+                            $studentSelect.val('').trigger('change');
                         });
-                        studentSelect.disabled = false;
+                } else {
+                    $studentSelect.empty().append('<option value="">First Select Degree Programme</option>');
+                    $studentSelect.prop('disabled', true);
+                    $studentSelect.select2({
+                        theme: 'bootstrap-5',
+                        placeholder: 'First Select Degree Programme',
+                        width: '100%'
                     });
-            } else {
-                studentSelect.innerHTML = '<option value="">First Select Degree Programme</option>';
-                studentSelect.disabled = true;
-                resultsContainer.innerHTML = '';
-                document.getElementById('publishButton').classList.add('hidden');
-            }
-        });
+                    $studentSelect.trigger('change');
+                    resultsContainer.innerHTML = '';
+                    document.getElementById('publishButton').classList.add('hidden');
+                }
+            });
 
-        document.getElementById('student_select').addEventListener('change', function () {
-            const studentId = this.value;
-            const resultsContainer = document.getElementById('results_container');
+            // Handle changes in student selection
+            $('#student_select').on('change', function () {
+                const studentId = this.value;
+                const resultsContainer = document.getElementById('results_container');
 
-            if (studentId) {
-                // Load unpublished results for selected student
-                fetch('get_unpublished_results.php?student_id=' + studentId)
-                    .then(response => response.text())
-                    .then(data => {
-                        resultsContainer.innerHTML = data;
-                        updatePublishButton();
+                if (studentId) {
+                    // Load unpublished results for selected student
+                    fetch('get_unpublished_results.php?student_id=' + studentId)
+                        .then(response => response.text())
+                        .then(data => {
+                            resultsContainer.innerHTML = data;
+                            updatePublishButton();
 
-                        // Add modern styling hints to checkboxes loaded via AJAX
-                        const checkboxes = resultsContainer.querySelectorAll('input[type="checkbox"]');
-                        checkboxes.forEach(cb => {
-                            cb.classList.add('form-check-input');
-                            cb.style.width = '20px';
-                            cb.style.height = '20px';
-                            cb.style.marginRight = '10px';
-                            cb.addEventListener('change', updatePublishButton);
+                            // Add modern styling hints to checkboxes loaded via AJAX
+                            const checkboxes = resultsContainer.querySelectorAll('input[type="checkbox"]');
+                            checkboxes.forEach(cb => {
+                                cb.classList.add('form-check-input');
+                                cb.style.width = '20px';
+                                cb.style.height = '20px';
+                                cb.style.marginRight = '10px';
+                                cb.addEventListener('change', updatePublishButton);
+                            });
                         });
-                    });
-            } else {
-                resultsContainer.innerHTML = '';
-                document.getElementById('publishButton').classList.add('hidden');
-            }
+                } else {
+                    resultsContainer.innerHTML = '';
+                    document.getElementById('publishButton').classList.add('hidden');
+                    document.getElementById('scheduleContainerIndiv').classList.add('hidden');
+                }
+            });
         });
 
         function updatePublishButton() {
