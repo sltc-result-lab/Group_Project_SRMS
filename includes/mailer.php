@@ -50,7 +50,7 @@ function sendBulkResultEmails($students_list, $link = "")
                 </head>
                 <body>
                 <p>Dear {$student['name']},</p>
-                <p>Your {$semesterText}results are released now. You can go to this link to see your results:</p>
+                <p>Your {$semesterText}results are released now. You can go to this link to see your results Link- https://myresult.codeviewsl.com</p>
                 <p><a href='{$link}'>{$link}</a></p>
                 <br>
                 <p>Regards,<br>daitresults@gmail.com</p>
@@ -59,7 +59,7 @@ function sendBulkResultEmails($students_list, $link = "")
                 ";
 
                 $mail->Body = $message;
-                $mail->AltBody = "Dear {$student['name']},\n\rYour {$semesterText}results are released now. You can go to this link to see your results:\n{$link}\n\nRegards,\ndaitresults@gmail.com";
+                $mail->AltBody = "Dear {$student['name']},\n\rYour {$semesterText}results are released now. You can go to this link to see your results Link- https://myresult.codeviewsl.com\n{$link}\n\nRegards,\ndaitresults@gmail.com";
 
                 $mail->send();
                 $sentCount++;
