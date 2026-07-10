@@ -14,30 +14,60 @@ class Admin
         $this->conn = $db;
     }
 
-    public function login($username, $password)
+    public function login($identifier, $password)
     {
-        $query = "SELECT id, username, password FROM " . $this->table_name . " 
-                 WHERE username = :username AND password = :password LIMIT 1";
+        /*
+            If your admins table has email column, keep this query.
+            If your admins table does NOT have email column,
+            remove: OR email = :identifier
+        */
+
+        $query = "SELECT id, username, email, password 
+                  FROM " . $this->table_name . " 
+                  WHERE username = :identifier OR email = :identifier 
+                  LIMIT 1";
 
         $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(":username", $username);
-        $stmt->bindParam(":password", $password);
+        $stmt->bindParam(":identifier", $identifier);
         $stmt->execute();
 
         if ($stmt->rowCount() > 0) {
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            $this->id = $row['id'];
-            $this->username = $row['username'];
-            return true;
+
+            /*
+                New hashed password check
+            */
+            if (password_verify($password, $row['password'])) {
+                $this->id = $row['id'];
+                $this->username = $row['username'];
+                $this->email = $row['email'] ?? null;
+                return true;
+            }
+
+            /*
+                Optional: old plain text password support.
+                This helps if your old admin password is still plain text in DB.
+                After successful login, it automatically converts it to hashed password.
+            */
+            if (hash_equals($row['password'], $password)) {
+                $this->id = $row['id'];
+                $this->username = $row['username'];
+                $this->email = $row['email'] ?? null;
+
+                $this->changePassword($password);
+
+                return true;
+            }
         }
+
         return false;
     }
 
     public function changePassword($new_password)
     {
         $query = "UPDATE " . $this->table_name . "
-                 SET password = :password 
-                 WHERE id = :id";
+                  SET password = :password 
+                  WHERE id = :id";
 
         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
 

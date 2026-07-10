@@ -9,7 +9,7 @@ $admin_username = $_SESSION['admin_username'] ?? 'Admin';
 include_once '../config/database.php';
 $database = new Database();
 $db = $database->getConnection();
-$subjects_stmt = $db->query("SELECT id, name, code FROM subjects ORDER BY name ASC");
+$subjects_stmt = $db->query("SELECT id, name, code, semester FROM subjects ORDER BY name ASC");
 $subjects = $subjects_stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
@@ -22,6 +22,7 @@ $subjects = $subjects_stmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
         /* Modern aesthetic requested by user:
@@ -152,7 +153,7 @@ $subjects = $subjects_stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="filter-group">
                     <i class="fa-solid fa-filter text-muted"></i>
                     <span class="text-muted small fw-bold">FILTER:</span>
-                    <select id="semesterFilter" onchange="fetchDashboardData()">
+                    <select id="semesterFilter" onchange="handleSemesterChange()">
                         <option value="">All Semesters</option>
                         <option value="1">Semester 1</option>
                         <option value="2">Semester 2</option>
@@ -172,6 +173,9 @@ $subjects = $subjects_stmt->fetchAll(PDO::FETCH_ASSOC);
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <button onclick="downloadPDFReport()" class="btn btn-primary d-flex align-items-center gap-2" style="border-radius:12px; padding:8px 16px; font-weight:600; font-size:14px; border:none; background-color: var(--primary);">
+                    <i class="fa-solid fa-file-pdf"></i> Download Report
+                </button>
                 <div class="admin-pill"><i class="fa-solid fa-user-shield me-2"></i><?php echo htmlspecialchars($admin_username); ?></div>
                 <a href="logout.php" class="logout-btn"><i class="fa-solid fa-arrow-right-from-bracket me-2"></i>Logout</a>
             </div>
@@ -268,6 +272,9 @@ $subjects = $subjects_stmt->fetchAll(PDO::FETCH_ASSOC);
 </div>
 
 <script>
+    // Embed the subjects data fetched from database
+    const allSubjects = <?php echo json_encode($subjects); ?>;
+
     // Global chart instances tracking
     let charts = {};
 
@@ -334,6 +341,32 @@ $subjects = $subjects_stmt->fetchAll(PDO::FETCH_ASSOC);
                 }
             }
         });
+    }
+
+    // Part 1: Semester-based Subject Dropdown updates
+    function updateSubjectDropdown() {
+        const semesterFilter = document.getElementById('semesterFilter');
+        const selectedSemester = semesterFilter.value;
+        const subjectFilter = document.getElementById('subjectFilter');
+        
+        // Clear except first option
+        subjectFilter.innerHTML = '<option value="">All Subjects</option>';
+        
+        allSubjects.forEach(subj => {
+            if (selectedSemester === "" || String(subj.semester) === String(selectedSemester)) {
+                const opt = document.createElement('option');
+                opt.value = subj.id;
+                opt.textContent = subj.name + ' (' + subj.code + ')';
+                subjectFilter.appendChild(opt);
+            }
+        });
+    }
+
+    function handleSemesterChange() {
+        updateSubjectDropdown();
+        // Reset subject option back to default (All Subjects)
+        document.getElementById('subjectFilter').value = "";
+        fetchDashboardData();
     }
 
     function fetchDashboardData() {
@@ -432,9 +465,203 @@ $subjects = $subjects_stmt->fetchAll(PDO::FETCH_ASSOC);
             });
     }
 
+    // Part 2: PDF Report Download
+    function downloadPDFReport() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        
+        // Fetch current filter text
+        const semesterSelect = document.getElementById('semesterFilter');
+        const semesterText = semesterSelect.options[semesterSelect.selectedIndex].text;
+        
+        const subjectSelect = document.getElementById('subjectFilter');
+        const subjectText = subjectSelect.options[subjectSelect.selectedIndex].text;
+        
+        // Fetch KPIs text
+        const totalStudents = document.getElementById('kpi-total-students').textContent;
+        const passRate = document.getElementById('kpi-pass-rate').textContent;
+        const failRate = document.getElementById('kpi-fail-rate').textContent;
+        const topSubject = document.getElementById('kpi-top-subject').innerText.replace(/\s+/g, ' '); // normalize whitespace
+        
+        // Date and Time
+        const generatedTime = new Date().toLocaleString('en-LK', { timeZone: 'Asia/Colombo' });
+        
+        // Styling Helper
+        const primaryColor = [37, 99, 235]; // #2563eb
+        const darkColor = [15, 23, 42]; // #0f172a
+        const mutedColor = [100, 116, 139]; // #64748b
+        const lightBg = [248, 250, 252]; // #f8fafc
+        const borderLight = [226, 232, 240]; // #e2e8f0
+        
+        // --- PAGE 1: Header & KPIs & Subject Chart ---
+        
+        // Document Header
+        doc.setFillColor(...darkColor);
+        doc.rect(0, 0, 210, 35, 'F');
+        
+        // Title
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(22);
+        doc.text('Student Result Analytics Report', 15, 18);
+        
+        // Subtitle
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(203, 213, 225);
+        doc.text('System generated dashboard overview and statistics', 15, 26);
+        
+        // Generated time (right aligned in header)
+        doc.text('Generated: ' + generatedTime, 195, 26, { align: 'right' });
+        
+        // Filter Details section
+        doc.setFillColor(...lightBg);
+        doc.rect(15, 45, 180, 20, 'F');
+        doc.setDrawColor(...borderLight);
+        doc.rect(15, 45, 180, 20);
+        
+        doc.setTextColor(...darkColor);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('REPORT FILTERS', 20, 52);
+        
+        doc.setFont('Helvetica', 'normal');
+        doc.setTextColor(...mutedColor);
+        doc.text('Selected Semester: ', 20, 59);
+        doc.setTextColor(...darkColor);
+        doc.text(semesterText, 55, 59);
+        
+        doc.setTextColor(...mutedColor);
+        doc.text('Selected Subject: ', 110, 59);
+        doc.setTextColor(...darkColor);
+        doc.text(subjectText, 142, 59);
+        
+        // KPI Cards Grid (4 boxes)
+        const kpiWidth = 42;
+        const kpiHeight = 25;
+        const kpiY = 75;
+        const kpiGap = 4;
+        
+        const kpis = [
+            { label: 'TOTAL STUDENTS', val: totalStudents, desc: 'Students' },
+            { label: 'PASS RATE', val: passRate + ' %', desc: 'Success percentage' },
+            { label: 'FAIL RATE', val: failRate + ' %', desc: 'Failure percentage' },
+            { label: 'TOP SUBJECT', val: topSubject.split(' (')[0], desc: topSubject.includes('(') ? '(' + topSubject.split(' (')[1] : 'Highest Average' }
+        ];
+        
+        kpis.forEach((kpi, idx) => {
+            const x = 15 + idx * (kpiWidth + kpiGap);
+            doc.setFillColor(...lightBg);
+            doc.rect(x, kpiY, kpiWidth, kpiHeight, 'F');
+            doc.setDrawColor(...borderLight);
+            doc.rect(x, kpiY, kpiWidth, kpiHeight);
+            
+            // Draw label
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(...mutedColor);
+            doc.text(kpi.label, x + 4, kpiY + 6);
+            
+            // Draw value
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(kpi.val.length > 15 ? 10 : 12);
+            doc.setTextColor(...primaryColor);
+            doc.text(kpi.val, x + 4, kpiY + 14);
+            
+            // Draw description
+            doc.setFont('Helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(...mutedColor);
+            doc.text(kpi.desc, x + 4, kpiY + 21, { maxWidth: kpiWidth - 8 });
+        });
+        
+        // Section Header 1
+        doc.setTextColor(...darkColor);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text('Subject-wise Performance Analysis', 15, 115);
+        doc.setDrawColor(...primaryColor);
+        doc.setLineWidth(0.8);
+        doc.line(15, 117, 35, 117);
+        
+        // Subject Chart Image
+        const subjectChartImg = charts.subject.toBase64Image();
+        doc.addImage(subjectChartImg, 'PNG', 15, 122, 180, 85);
+        
+        // Footer Page 1
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...mutedColor);
+        doc.text('Student Result Management System - Page 1 of 2', 105, 285, { align: 'center' });
+        
+        // --- PAGE 2: Grade Distribution & Grade Normalization ---
+        doc.addPage();
+        
+        // Header Page 2 (Simple text title block)
+        doc.setFillColor(...darkColor);
+        doc.rect(0, 0, 210, 15, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Student Result Analytics Report - Detail Distribution', 15, 10);
+        
+        // Grade Distribution Chart Section
+        doc.setTextColor(...darkColor);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text('Grade Distribution', 15, 30);
+        doc.setDrawColor(...primaryColor);
+        doc.setLineWidth(0.8);
+        doc.line(15, 32, 35, 32);
+        
+        const gradeChartImg = charts.grade.toBase64Image();
+        doc.addImage(gradeChartImg, 'PNG', 15, 37, 180, 80);
+        
+        // Grade Normalization Chart Section
+        doc.setTextColor(...darkColor);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text('Grade Normalization', 15, 135);
+        doc.setDrawColor(...primaryColor);
+        doc.setLineWidth(0.8);
+        doc.line(15, 137, 35, 137);
+        
+        const normGradeChartImg = charts.normGrade.toBase64Image();
+        doc.addImage(normGradeChartImg, 'PNG', 15, 142, 180, 80);
+        
+        // Summary / Notes Section
+        doc.setFillColor(...lightBg);
+        doc.rect(15, 235, 180, 30, 'F');
+        doc.setDrawColor(...borderLight);
+        doc.rect(15, 235, 180, 30);
+        
+        doc.setTextColor(...darkColor);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('Notes / Summary:', 20, 242);
+        doc.setFont('Helvetica', 'normal');
+        doc.setTextColor(...mutedColor);
+        doc.setFontSize(8.5);
+        doc.text('This report outlines the academic status and grade outcomes for ' + semesterText + ' under ' + subjectText + '. The figures represent verified evaluation results extracted directly from the primary databases.', 20, 248, { maxWidth: 170 });
+        
+        // Footer Page 2
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...mutedColor);
+        doc.text('Student Result Management System - Page 2 of 2', 105, 285, { align: 'center' });
+        
+        // Save File
+        const sanitizeString = (str) => str.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        const semesterSlug = sanitizeString(semesterText);
+        const subjectSlug = sanitizeString(subjectText);
+        const pdfName = `analytics_report_${semesterSlug}_${subjectSlug}.pdf`;
+        doc.save(pdfName);
+    }
+
     // Initialize map and fetch default data
     document.addEventListener('DOMContentLoaded', () => {
         initCharts();
+        updateSubjectDropdown();
         fetchDashboardData();
     });
 </script>
